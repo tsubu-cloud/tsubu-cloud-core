@@ -6,8 +6,8 @@ pub fn build(b: *std.Build) void {
 
     // wasmtime ships no pkg-config file, so its include/lib directories are
     // supplied explicitly (e.g. from the Nix package's `dev`/`lib` outputs).
-    const wasmtime_include_dir = b.option([]const u8, "wasmtime-include", "Path to wasmtime's include directory");
-    const wasmtime_lib_dir = b.option([]const u8, "wasmtime-lib", "Path to wasmtime's lib directory");
+    const wasmtime_include_dir = nonEmpty(b.option([]const u8, "wasmtime-include", "Path to wasmtime's include directory"));
+    const wasmtime_lib_dir = nonEmpty(b.option([]const u8, "wasmtime-lib", "Path to wasmtime's lib directory"));
 
     // libpq is used by `src/hosts/postgres/*` (the wasm guest's runtime host
     // import for connecting to user-supplied Postgres databases).
@@ -16,12 +16,12 @@ pub fn build(b: *std.Build) void {
     // the shared build), so its lib dir (containing pgcommon/pgport
     // alongside it, which ship no pkg-config file of their own) must be
     // supplied explicitly.
-    const pq_lib_dir = b.option([]const u8, "pq-lib", "Path to libpq's lib directory");
+    const pq_lib_dir = nonEmpty(b.option([]const u8, "pq-lib", "Path to libpq's lib directory"));
 
     // libunwind pulls in liblzma (xz) transitively via its pkg-config
     // `Requires.private`; needs its own explicit lib dir for the same
     // reason as pq-lib above.
-    const lzma_lib_dir = b.option([]const u8, "lzma-lib", "Path to liblzma's lib directory");
+    const lzma_lib_dir = nonEmpty(b.option([]const u8, "lzma-lib", "Path to liblzma's lib directory"));
 
     const core_mod = b.addModule("core", .{
         .root_source_file = b.path("src/root.zig"),
@@ -35,6 +35,14 @@ pub fn build(b: *std.Build) void {
     const run_core_tests = b.addRunArtifact(core_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_core_tests.step);
+}
+
+// `b.dependency()` callers forward unset string options as `""` rather than
+// omitting them, since `anytype` struct literals can't conditionally include
+// fields; normalize that back to `null` here.
+fn nonEmpty(s: ?[]const u8) ?[]const u8 {
+    if (s) |v| return if (v.len == 0) null else v;
+    return null;
 }
 
 fn linkWasmtime(
